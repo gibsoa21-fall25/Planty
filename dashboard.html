@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 Sensor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background-color: #121212;
+      color: #00ff99;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #00ff99;
+    }
+    .chart-container {
+      width: 100%;
+      max-width: 800px;
+      margin: 20px 0;
+    }
+    select, button {
+      background: #1f1f1f;
+      color: #00ff99;
+      border: 1px solid #00ff99;
+      padding: 8px;
+      margin-right: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #current {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ESP32 Sensor Dashboard</h1>
+  <div id="current">Loading data...</div>
+
+  <div class="chart-container">
+    <canvas id="tempChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="humidityChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="soilChart"></canvas>
+  </div>
+
+  <h2>Download CSV Data</h2>
+  <label for="filter">Timespan:</label>
+  <select id="filter">
+    <option value="all">All</option>
+    <option value="1h">Last 1 Hour</option>
+    <option value="6h">Last 6 Hours</option>
+    <option value="24h">Last 24 Hours</option>
+  </select>
+  <button onclick="downloadFilteredCSV()">Download CSV</button>
+
+  <script>
+    let tempChart, humidityChart, soilChart;
+    const current = document.getElementById('current');
+    const filter = document.getElementById('filter');
+
+    function createChart(id, label, borderColor) {
+      return new Chart(document.getElementById(id).getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: label,
+            data: [],
+            borderColor: borderColor,
+            borderWidth: 2,
+            fill: false,
+            tension: 0.2,
+            pointRadius: 1
+          }]
+        },
+        options: {
+          scales: {
+            x: { display: false },
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    async function fetchData() {
+      const res = await fetch('/data');
+      const data = await res.json();
+
+      const time = new Date().toLocaleTimeString();
+      updateChart(tempChart, time, data.temperature);
+      updateChart(humidityChart, time, data.humidity);
+      updateChart(soilChart, time, data.soil);
+
+      current.textContent = `Temperature: ${data.temperature} °C | Humidity: ${data.humidity}% | Soil: ${data.soil}`;
+    }
+
+    function updateChart(chart, label, value) {
+      chart.data.labels.push(label);
+      chart.data.datasets[0].data.push(value);
+      if (chart.data.labels.length > 50) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
+      chart.update();
+    }
+
+    function downloadFilteredCSV() {
+      const selected = filter.value;
+      const link = document.createElement('a');
+      const now = new Date();
+      let url = '/download';
+
+      if (selected !== 'all') {
+        url += `?range=${selected}`;
+      }
+
+      link.href = url;
+      link.download = `data_${selected}_${now.toISOString().slice(0, 19)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Create charts
+    tempChart = createChart('tempChart', 'Temperature (°C)', '#ff4d4d');
+    humidityChart = createChart('humidityChart', 'Humidity (%)', '#33ccff');
+    soilChart = createChart('soilChart', 'Soil Moisture', '#66ff66');
+
+    // Auto update every 5 seconds
+    fetchData();
+    setInterval(fetchData, 5000);
+  </script>
+</body>
+</html>
